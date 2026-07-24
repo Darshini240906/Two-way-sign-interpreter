@@ -18,7 +18,13 @@ export default function DatasetCapture() {
   const choices = labelType === "word" ? WORDS : LETTERS;
   const count = counts[`${labelType}s`]?.[label] ?? 0;
 
+  // Guards against React 18 StrictMode's dev-only double-invoke of effects:
+  // without this, a second enableCamera() call can interrupt the first
+  // video.play() promise mid-flight, surfacing a spurious AbortError.
+  const requestIdRef = useRef(0);
+
   const enableCamera = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setCameraError("");
     setStatus("Requesting camera permission…");
     try {
@@ -27,12 +33,30 @@ export default function DatasetCapture() {
       }
       streamRef.current?.getTracks().forEach((track) => track.stop());
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+
+      // A newer call started while we were awaiting permission — abandon
+      // this stream instead of racing it against the newer one.
+      if (requestId !== requestIdRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       streamRef.current = stream;
       if (!videoRef.current) throw new Error("Camera preview is not available.");
       videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-      setStatus("Camera ready");
+
+      try {
+        await videoRef.current.play();
+      } catch (playError) {
+        // Benign: happens when srcObject changes again before play()
+        // resolves (StrictMode remount, or rapid Enable Camera clicks).
+        // <video autoPlay> will still start playback on its own.
+        if (playError.name !== "AbortError") throw playError;
+      }
+
+      if (requestId === requestIdRef.current) setStatus("Camera ready");
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
       const message = `${error.name ?? "CameraError"}: ${error.message ?? "Unable to access camera"}`;
       setCameraError(message);
       setStatus("Camera unavailable");
@@ -42,7 +66,10 @@ export default function DatasetCapture() {
   useEffect(() => {
     fetch(`${API}/dataset/counts`).then((response) => response.ok ? response.json() : Promise.reject()).then(setCounts).catch(() => setStatus("Could not load counts — is the backend running?"));
     enableCamera();
-    return () => streamRef.current?.getTracks().forEach((track) => track.stop());
+    return () => {
+      requestIdRef.current += 1; // invalidate any in-flight enableCamera call
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
   }, [enableCamera]);
 
   const updateCount = (type, name, nextCount) => setCounts((current) => ({ ...current, [`${type}s`]: { ...current[`${type}s`], [name]: nextCount } }));

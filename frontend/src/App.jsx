@@ -18,27 +18,36 @@ export default function App() {
           </h1>
         </div>
 
-        <div className="flex rounded-full border border-line bg-panel p-1">
-          <button
-            onClick={() => setMode("sign")}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors ${
-              mode === "sign"
-                ? "bg-sign text-ink"
-                : "text-muted hover:text-paper"
-            }`}
+        <div className="flex items-center gap-3">
+          <a
+            href="/dataset-capture"
+            className="rounded-full border border-line px-4 py-1.5 font-mono text-xs uppercase tracking-widest text-muted transition-colors hover:border-sign/60 hover:text-sign"
           >
-            Sign in
-          </button>
-          <button
-            onClick={() => setMode("speech")}
-            className={`rounded-full px-4 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors ${
-              mode === "speech"
-                ? "bg-speech text-ink"
-                : "text-muted hover:text-paper"
-            }`}
-          >
-            Speak in
-          </button>
+            Dataset capture
+          </a>
+
+          <div className="flex rounded-full border border-line bg-panel p-1">
+            <button
+              onClick={() => setMode("sign")}
+              className={`rounded-full px-4 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors ${
+                mode === "sign"
+                  ? "bg-sign text-ink"
+                  : "text-muted hover:text-paper"
+              }`}
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => setMode("speech")}
+              className={`rounded-full px-4 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors ${
+                mode === "speech"
+                  ? "bg-speech text-ink"
+                  : "text-muted hover:text-paper"
+              }`}
+            >
+              Speak in
+            </button>
+          </div>
         </div>
       </header>
 
