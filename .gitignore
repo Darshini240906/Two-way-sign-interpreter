@@ -1,0 +1,47 @@
+# --- Node / frontend ---
+node_modules/
+dist/
+.vite/
+*.local
+
+# --- Python / backend ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+backend/models/*.h5
+backend/models/*.pkl
+!backend/models/.gitkeep
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Large raw training/animation data (keep structure, not content) ---
+datasets/landmark_samples/**/*.webm
+datasets/landmark_samples/**/*.jpg
+datasets/landmark_samples/**/*.jpeg
+datasets/landmark_samples/**/*.png
+!datasets/landmark_samples/**/.gitkeep
+
+# Recorded animation clips can be large too — uncomment if you don't
+# want 46 JSON files bloating the repo (they're regenerable via capture-tool):
+# assets/signs/*.json
+# assets/letters/*.json
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Logs ---
+*.log
+npm-debug.log*

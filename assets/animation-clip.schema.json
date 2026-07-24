@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lumina avatar animation clip",
+  "type": "object",
+  "required": ["version", "fps", "duration", "frames"],
+  "properties": {
+    "version": { "const": 1 },
+    "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "duration": { "type": "number", "minimum": 0 },
+    "source": { "type": "string" },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["time", "bones"],
+        "properties": {
+          "time": { "type": "number", "minimum": 0 },
+          "bones": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          }
+        }
+      }
+    }
+  }
+}

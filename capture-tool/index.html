@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumina — ASL motion capture</title>
+    <style>
+      * { box-sizing: border-box; } body { margin: 0; background: #101218; color: #e8e9ed; font: 14px system-ui, sans-serif; }
+      header, .controls { padding: 14px 20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; background:#191c25; }
+      h1 { margin:0 18px 0 0; font-size:17px; } button, input { font:inherit; } button { padding:7px 10px; cursor:pointer; }
+      #stage { height:calc(100vh - 112px); min-height:460px; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#343946; }
+      .view { min-width:0; position:relative; background:#080a0f; overflow:hidden; } video, canvas { width:100%; height:100%; object-fit:contain; display:block; }
+      #three canvas { position:absolute; inset:0; } .label { position:absolute; top:10px; left:10px; color:#aeb8d4; font-size:12px; z-index:2; }
+      #status { color:#9fb8a8; } small { color:#9ba2b7; }
+    </style>
+  </head>
+  <body>
+    <header><h1>Lumina motion capture</h1><small>Video → MediaPipe Holistic → Kalidokit → Mixamo rig</small></header>
+    <div class="controls">
+      <label>Video <input id="videoFile" type="file" accept="video/*" /></label>
+      <label>FPS <input id="fps" type="number" value="30" min="1" max="60" style="width:58px" /></label>
+      <button id="play" disabled>Play / pause</button><button id="record" disabled>Start recording</button><button id="download" disabled>Download JSON</button>
+      <span id="status">Loading avatar and vision models…</span>
+    </div>
+    <main id="stage">
+      <section class="view"><span class="label">Source + landmarks</span><video id="video" muted playsinline></video><canvas id="overlay"></canvas></section>
+      <section class="view" id="three"><span class="label">Rig preview</span></section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/kalidokit/dist/kalidokit.umd.js"></script>
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
+      import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/loaders/GLTFLoader.js";
+
+      const videoFile = document.querySelector('#videoFile'), video = document.querySelector('#video'), overlay = document.querySelector('#overlay'), ctx = overlay.getContext('2d');
+      const status = document.querySelector('#status'), play = document.querySelector('#play'), record = document.querySelector('#record'), download = document.querySelector('#download');
+      let avatar, bones = new Map(), recording = false, frames = [], nextSample = 0, recordedFps = 30;
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); renderer.setPixelRatio(devicePixelRatio); document.querySelector('#three').append(renderer.domElement);
+      const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff, 0x202535, 2.5)); const light = new THREE.DirectionalLight(0xffffff, 2); light.position.set(2, 4, 3); scene.add(light);
+      const camera = new THREE.PerspectiveCamera(35, 1, .1, 100); camera.position.set(0, 1.35, 3.2);
+      const target = new THREE.Vector3(0, 1.05, 0); const clock = new THREE.Clock();
+      function resize() { const el = document.querySelector('#three'); const w=el.clientWidth,h=el.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+      addEventListener('resize', resize); resize();
+      new GLTFLoader().load('../assets/avatar.glb', (gltf) => { avatar = gltf.scene; avatar.traverse(o => { if (o.isBone) bones.set(o.name.toLowerCase(), o); }); scene.add(avatar); status.textContent=`Ready — ${bones.size} bones found`; play.disabled=record.disabled=false; }, undefined, e => status.textContent='Avatar load failed: '+e.message);
+      (function render(){ requestAnimationFrame(render); if (avatar) { avatar.rotation.y = Math.sin(clock.getElapsedTime()*.18)*.18; camera.lookAt(target); } renderer.render(scene,camera); })();
+      function bone(...names) { for (const name of names) { const found = bones.get(name.toLowerCase()); if(found) return found; } return null; }
+      const aliases = { Hips:['mixamorigHips','Hips'], Spine:['mixamorigSpine','Spine'], Chest:['mixamorigSpine1','Spine1'], Neck:['mixamorigNeck','Neck'], Head:['mixamorigHead','Head'], LeftUpperArm:['mixamorigLeftArm','LeftArm'], LeftLowerArm:['mixamorigLeftForeArm','LeftForeArm'], LeftHand:['mixamorigLeftHand','LeftHand'], RightUpperArm:['mixamorigRightArm','RightArm'], RightLowerArm:['mixamorigRightForeArm','RightForeArm'], RightHand:['mixamorigRightHand','RightHand'] };
+      function setRotation(key, r) { if (!r) return; const b=bone(...(aliases[key]||[key])); if (b) b.rotation.set(r.x||0, r.y||0, r.z||0); }
+      function hand(prefix, result) { if(!result) return; setRotation(prefix+'Hand', result[`${prefix}Wrist`]); const digits=['Thumb','Index','Middle','Ring','Little'], segments=['Proximal','Intermediate','Distal']; for(const digit of digits) for(let i=0;i<3;i++) { const name=`${prefix}Hand${digit}${i+1}`, r=result[`${prefix}${digit}${segments[i]}`]; const b=bone(`mixamorig${name}`,name); if(b && r) b.rotation.set(r.x||0,r.y||0,r.z||0); } }
+      function captureFrame(t) { const q={}; bones.forEach((b, name) => q[b.name]=[b.quaternion.x,b.quaternion.y,b.quaternion.z,b.quaternion.w]); frames.push({time:+t.toFixed(4),bones:q}); }
+      const holistic = new Holistic({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`}); holistic.setOptions({modelComplexity:1,smoothLandmarks:true,refineFaceLandmarks:true,minDetectionConfidence:.55,minTrackingConfidence:.55});
+      holistic.onResults(results => { overlay.width=video.videoWidth||640; overlay.height=video.videoHeight||480; ctx.save();ctx.clearRect(0,0,overlay.width,overlay.height);ctx.drawImage(results.image,0,0,overlay.width,overlay.height); if(results.poseLandmarks) drawConnectors(ctx,results.poseLandmarks,POSE_CONNECTIONS,{color:'#00ffb2',lineWidth:2}); if(results.leftHandLandmarks) drawConnectors(ctx,results.leftHandLandmarks,HAND_CONNECTIONS,{color:'#61a9ff',lineWidth:2}); if(results.rightHandLandmarks) drawConnectors(ctx,results.rightHandLandmarks,HAND_CONNECTIONS,{color:'#ff75c8',lineWidth:2});ctx.restore();
+        if(!avatar) return; const pose=results.poseLandmarks && results.poseWorldLandmarks && Kalidokit.Pose.solve(results.poseWorldLandmarks,results.poseLandmarks,{runtime:'mediapipe',video}); if(pose) { setRotation('Hips',pose.Hips.rotation); setRotation('Spine',pose.Spine); setRotation('Chest',pose.Spine); setRotation('LeftUpperArm',pose.LeftUpperArm); setRotation('LeftLowerArm',pose.LeftLowerArm); setRotation('RightUpperArm',pose.RightUpperArm); setRotation('RightLowerArm',pose.RightLowerArm); }
+        const face=results.faceLandmarks && Kalidokit.Face.solve(results.faceLandmarks,{runtime:'mediapipe',video}); if(face) { setRotation('Head',face.head); setRotation('Neck',face.head); }
+        hand('Left',results.rightHandLandmarks && Kalidokit.Hand.solve(results.rightHandLandmarks,'Left')); hand('Right',results.leftHandLandmarks && Kalidokit.Hand.solve(results.leftHandLandmarks,'Right'));
+        if(recording && video.currentTime >= nextSample) { captureFrame(video.currentTime); nextSample += 1/recordedFps; }
+      });
+      let busy=false; async function process() { if(!video.paused && !video.ended && !busy) { busy=true; await holistic.send({image:video}); busy=false; } requestAnimationFrame(process); } process();
+      videoFile.onchange=e=>{ const f=e.target.files[0]; if(!f)return; video.src=URL.createObjectURL(f); video.onloadeddata=()=>{ status.textContent='Video loaded. Press Play.'; }; };
+      play.onclick=()=>video.paused?video.play():video.pause();
+      record.onclick=()=>{ recording=!recording; if(recording){ frames=[];recordedFps=Number(document.querySelector('#fps').value)||30;nextSample=video.currentTime;record.textContent='Stop recording';status.textContent='Recording bone quaternions…'; } else {record.textContent='Start recording';download.disabled=!frames.length;status.textContent=`Captured ${frames.length} frames`;}};
+      download.onclick=()=>{ const clip={version:1,fps:recordedFps,duration:frames.length?frames.at(-1).time-frames[0].time:0,source:videoFile.files[0]?.name||'video',frames}; const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(clip,null,2)],{type:'application/json'}));a.download='sign-clip.json';a.click();URL.revokeObjectURL(a.href); };
+    </script>
+  </body>
+</html>

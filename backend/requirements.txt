@@ -1,0 +1,18 @@
+fastapi
+uvicorn[standard]
+websockets
+python-multipart
+
+# Phase 2 (recognition)
+mediapipe
+tensorflow
+scikit-learn
+numpy
+
+# Phase 3 (speech -> sign)
+openai-whisper
+argostranslate
+
+# Phase 4 (voice output)
+TTS
+gTTS
